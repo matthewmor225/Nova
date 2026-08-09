@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Nova — AI chat</title>
+<style>
+  :root{
+    --ink:#1b1a17;
+    --paper:#f6f3ec;
+    --line:#d9d3c4;
+    --accent:#3b5c4d;
+    --accent-soft:#e4ede8;
+    --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    --serif: Georgia, "Iowan Old Style", "Times New Roman", serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--serif);
+    height:100vh;
+    display:flex;
+    flex-direction:column;
+  }
+  header{
+    padding:18px 24px 14px;
+    border-bottom:1px solid var(--line);
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+  }
+  header h1{ font-size:1.15rem; margin:0; font-weight:600; }
+  header span{
+    font-family:var(--mono);
+    font-size:0.7rem;
+    color:#7a7466;
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+  }
+  #log{
+    flex:1;
+    overflow-y:auto;
+    padding:24px;
+    display:flex;
+    flex-direction:column;
+    gap:16px;
+  }
+  .msg{
+    max-width:70%;
+    padding:10px 14px;
+    line-height:1.45;
+    font-size:0.95rem;
+    white-space:pre-wrap;
+  }
+  .user{
+    align-self:flex-end;
+    background:var(--accent);
+    color:var(--paper);
+    border-radius:14px 14px 3px 14px;
+  }
+  .assistant{
+    align-self:flex-start;
+    background:var(--accent-soft);
+    border-radius:14px 14px 14px 3px;
+  }
+  .assistant.thinking{ color:#7a7466; font-style:italic; }
+  form{
+    display:flex;
+    gap:10px;
+    padding:16px 24px 22px;
+    border-top:1px solid var(--line);
+  }
+  input{
+    flex:1;
+    padding:11px 14px;
+    border:1px solid var(--line);
+    border-radius:8px;
+    font-family:var(--serif);
+    font-size:0.95rem;
+    background:#fff;
+  }
+  input:focus{ outline:2px solid var(--accent); outline-offset:1px; }
+  button{
+    padding:0 20px;
+    border:none;
+    border-radius:8px;
+    background:var(--accent);
+    color:var(--paper);
+    font-family:var(--mono);
+    font-size:0.8rem;
+    letter-spacing:0.05em;
+    text-transform:uppercase;
+    cursor:pointer;
+  }
+  button:disabled{ opacity:0.5; cursor:default; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Nova</h1>
+  <span>ai chat, running on your key</span>
+</header>
+
+<div id="log"></div>
+
+<form id="form">
+  <input id="input" type="text" placeholder="Say something…" autocomplete="off" />
+  <button id="send" type="submit">Send</button>
+</form>
+
+<script>
+// You'll be asked for your Anthropic API key when the page loads.
+// It's kept only in this browser tab's memory — never saved to the file, never sent anywhere but Anthropic's API.
+let API_KEY = "";
+while(!API_KEY){
+  API_KEY = window.prompt("Paste your Anthropic API key (starts with sk-ant-):", "");
+  if(API_KEY === null){ API_KEY = ""; break; }
+}
+
+const log = document.getElementById('log');
+const form = document.getElementById('form');
+const input = document.getElementById('input');
+const sendBtn = document.getElementById('send');
+
+let history = [];
+
+function addMessage(role, text){
+  const el = document.createElement('div');
+  el.className = 'msg ' + role;
+  el.textContent = text;
+  log.appendChild(el);
+  log.scrollTop = log.scrollHeight;
+  return el;
+}
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const text = input.value.trim();
+  if(!text) return;
+
+  addMessage('user', text);
+  history.push({ role: 'user', content: text });
+  input.value = '';
+  input.disabled = true;
+  sendBtn.disabled = true;
+
+  const thinkingEl = addMessage('assistant thinking', 'thinking…');
+
+  try{
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": API_KEY,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true"
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 1000,
+        messages: history
+      })
+    });
+
+    const data = await response.json();
+
+    if(data.error){
+      throw new Error(data.error.message || "API error");
+    }
+
+    const textBlocks = (data.content || []).filter(b => b.type === 'text').map(b => b.text);
+    const reply = textBlocks.join('\n') || "(no response)";
+
+    thinkingEl.remove();
+    addMessage('assistant', reply);
+    history.push({ role: 'assistant', content: reply });
+  }catch(err){
+    thinkingEl.remove();
+    addMessage('assistant', "Something went wrong: " + err.message);
+  }finally{
+    input.disabled = false;
+    sendBtn.disabled = false;
+    input.focus();
+  }
+});
+
+input.focus();
+</script>
+
+</body>
+</html>
